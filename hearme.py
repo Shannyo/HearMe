@@ -6,9 +6,8 @@ import threading
 import time
 import subprocess
 
-# Set it up
-USER_NAME = "YOUR_USERNAME"  #REPLACE THIS WITH YOUR USERNAME (example: pi)
-
+#REPLACE THIS WITH YOUR USERNAME (example: pi)
+USER_NAME = "pi"  
 
 os.environ['XDG_DATA_HOME'] = f"/home/{USER_NAME}/.local/share"
 os.environ['ARGOS_DEVICE_TYPE'] = 'cpu'
@@ -18,29 +17,31 @@ import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 import argostranslate.translate
 import argostranslate.package
-
 BASE_PATH = f"/home/{USER_NAME}/HearMe"
 MODEL_PATHS = {
     "ru": os.path.join(BASE_PATH, "model_ru"),
     "en": os.path.join(BASE_PATH, "model_en")
 }
-SAMPLE_RATE = 48000
-CLEANUP_DELAY = 15000 
-PINS = {"in": 23, "out": 24, "theme": 25}
 
+SAMPLE_RATE = 48000
+CLEANUP_DELAY = 15000  
+PINS = {"in": 23, "out": 24, "theme": 25}
 class Pi5Button:
+    """Класс для работы с GPIO на Raspberry Pi 5 через системную утилиту pinctrl"""
     def __init__(self, pin):
         self.pin = pin
         try:
             subprocess.run(["pinctrl", "set", str(self.pin), "ip", "pu"], check=True)
-        except: pass
+        except Exception as e:
+            print(f"Ошибка настройки пина {self.pin}: {e}")
 
     @property
     def is_pressed(self):
         try:
             res = subprocess.check_output(["pinctrl", "get", str(self.pin)], text=True)
-            return "lo" in res
-        except: return False
+            return "lo" in res  
+        except: 
+            return False
 
 class HearMeApp(ctk.CTk):
     def __init__(self):
@@ -48,7 +49,6 @@ class HearMeApp(ctk.CTk):
         self.title("HearMe Pro")
         self.attributes('-fullscreen', True)
         ctk.set_appearance_mode("Dark")
-        
         self.input_lang = "ru"
         self.output_lang = "en"
         self.is_dark = True
@@ -68,14 +68,17 @@ class HearMeApp(ctk.CTk):
             }
             print("--- ВСЕ МОДЕЛИ ЗАГРУЖЕНЫ ---")
         except Exception as e:
-            print(f"Критическая ошибка: {e}"); sys.exit(1)
+            print(f"Критическая ошибка загрузки моделей: {e}")
+            sys.exit(1)
 
         self.setup_ui()
         self.setup_hardware()
 
     def setup_ui(self):
-        self.grid_columnconfigure(0, weight=0); self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
+        
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
@@ -85,14 +88,17 @@ class HearMeApp(ctk.CTk):
 
         ctk.CTkLabel(self.sidebar, text="Язык речи:").grid(row=2, column=0, pady=(20,0))
         self.seg_in = ctk.CTkSegmentedButton(self.sidebar, values=["RU", "EN"], command=self.set_in_lang)
-        self.seg_in.set("RU"); self.seg_in.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
+        self.seg_in.set("RU")
+        self.seg_in.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
 
         ctk.CTkLabel(self.sidebar, text="Перевод на:").grid(row=4, column=0, pady=(20,0))
         self.seg_out = ctk.CTkSegmentedButton(self.sidebar, values=["RU", "EN"], command=self.set_out_lang)
-        self.seg_out.set("EN"); self.seg_out.grid(row=5, column=0, padx=20, pady=5, sticky="ew")
+        self.seg_out.set("EN")
+        self.seg_out.grid(row=5, column=0, padx=20, pady=5, sticky="ew")
 
         self.sw_theme = ctk.CTkSwitch(self.sidebar, text="Тёмная тема", command=self.toggle_theme)
-        self.sw_theme.select(); self.sw_theme.grid(row=6, column=0, padx=20, pady=30)
+        self.sw_theme.select()
+        self.sw_theme.grid(row=6, column=0, padx=20, pady=30)
 
         ctk.CTkButton(self.sidebar, text="ВЫХОД", fg_color="transparent", border_width=1, command=self.close_app).grid(row=9, column=0, padx=20, pady=20, sticky="ew")
 
@@ -115,11 +121,14 @@ class HearMeApp(ctk.CTk):
     def handle_hw_click(self, key):
         if key == "in":
             val = "EN" if self.input_lang == "ru" else "RU"
-            self.seg_in.set(val); self.set_in_lang(val)
+            self.seg_in.set(val)
+            self.set_in_lang(val)
         elif key == "out":
             val = "EN" if self.output_lang == "ru" else "RU"
-            self.seg_out.set(val); self.set_out_lang(val)
-        elif key == "theme": self.toggle_theme()
+            self.seg_out.set(val)
+            self.set_out_lang(val)
+        elif key == "theme": 
+            self.toggle_theme()
 
     def set_in_lang(self, val): self.input_lang = val.lower()
     def set_out_lang(self, val): self.output_lang = val.lower()
@@ -145,18 +154,22 @@ class HearMeApp(ctk.CTk):
                 while self.is_running:
                     data = self.audio_queue.get()
                     active_rec = self.recognizers[self.input_lang]
+                    
                     if active_rec.AcceptWaveform(data):
                         txt = json.loads(active_rec.Result()).get("text", "")
                         if txt: self.after(0, lambda: self.show_txt(txt, False))
                     else:
                         ptl = json.loads(active_rec.PartialResult()).get("partial", "")
                         if ptl: self.after(0, lambda: self.show_txt(ptl, True))
-        except: self.is_running = False
+        except Exception as e: 
+            print(f"Ошибка аудиопотока: {e}")
+            self.is_running = False
 
     def show_txt(self, text, is_partial):
         self.reset_timer()
         self.textbox.configure(state="normal")
-        if self.partial_active: self.textbox.delete("end-2l", "end-1c")
+        if self.partial_active: 
+            self.textbox.delete("end-2l", "end-1c")
         
         if is_partial:
             self.textbox.insert("end", f"\n... {text}")
@@ -167,25 +180,35 @@ class HearMeApp(ctk.CTk):
                 try:
                     tr = argostranslate.translate.translate(text, self.input_lang, self.output_lang)
                     res += f"{tr.capitalize()}\n"
-                except Exception as e: print(f"Translate error: {e}")
+                except Exception as e: 
+                    print(f"Ошибка перевода: {e}")
             self.textbox.insert("end", res)
             self.partial_active = False
             
-        self.textbox.see("end"); self.textbox.configure(state="disabled")
+        self.textbox.see("end")
+        self.textbox.configure(state="disabled")
 
     def reset_timer(self):
-        if self.cleanup_timer: self.after_cancel(self.cleanup_timer)
+        if self.cleanup_timer: 
+            self.after_cancel(self.cleanup_timer)
         self.cleanup_timer = self.after(CLEANUP_DELAY, self.clear_ui)
 
     def clear_ui(self):
-        self.textbox.configure(state="normal"); self.textbox.delete("1.0", "end")
-        self.textbox.configure(state="disabled"); self.partial_active = False
+        self.textbox.configure(state="normal")
+        self.textbox.delete("1.0", "end")
+        self.textbox.configure(state="disabled")
+        self.partial_active = False
 
     def log_msg(self, m):
-        self.textbox.configure(state="normal"); self.textbox.insert("end", f"[{m}]\n"); self.textbox.configure(state="disabled")
+        self.textbox.configure(state="normal")
+        self.textbox.insert("end", f"[{m}]\n")
+        self.textbox.configure(state="disabled")
 
     def close_app(self):
-        self.is_running = False; self.destroy(); sys.exit(0)
+        self.is_running = False
+        self.destroy()
+        sys.exit(0)
 
 if __name__ == "__main__":
-    app = HearMeApp(); app.mainloop()
+    app = HearMeApp()
+    app.mainloop()
